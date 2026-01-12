@@ -70,6 +70,53 @@ asterisk -rvvvvvvvvv
 | 5038        | TCP      | AMI (Asterisk Manager Interface) |
 | 8088        | TCP      | HTTP interface                   |
 
+## Configuration
+
+Example configuration files are provided for a basic internal calling setup. The contents of these files are copied into the container's `/etc/asterisk` directory. If you need to add additional config files, remember to add `COPY` commands to the `Dockerfile`.
+
+
+### pjsip.conf
+
+Defines the SIP transport and user endpoints:
+
+- **Transport**: UDP on port 5060
+- **Test Users**: Two endpoints (`1001` and `1002`) with userpass authentication
+  - User `1001`: password `test1001`
+  - User `1002`: password `test1002`
+
+Each endpoint is configured with:
+
+- `ulaw` and `alaw` codecs
+- `internal` dialplan context
+- `direct_media=no` for NAT compatibility
+
+### extensions.conf
+
+Defines the dialplan for the `internal` context:
+
+| Extension | Description                                        |
+| --------- | -------------------------------------------------- |
+| 1XXX      | Dial another internal extension (e.g., 1001, 1002) |
+| 600       | Echo test - hear your own audio                    |
+| 601       | Playback test - plays demo-congrats                |
+| 602       | Speaking clock - announces current time            |
+
+### Configuration Testing
+
+The config files are copied into the container image at build time. Changes to the config requires a rebuild. Unless you mount the local version of the config files when running the container:
+
+```bash
+docker run -d --name asterisk18 \
+  -p 5060:5060/udp \
+  -p 5060:5060/tcp \
+  -p 10000-10100:10000-10100/udp \
+  -v $(pwd)/pjsip.conf:/etc/asterisk/pjsip.conf:ro \
+  -v $(pwd)/extensions.conf:/etc/asterisk/extensions.conf:ro \
+  asterisk:18
+```
+
+This saves time during development and testing reducing the need for rebuilding the container image.
+
 ## Testing
 
 ### SIP Registration Test
