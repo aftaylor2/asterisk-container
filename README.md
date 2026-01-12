@@ -69,3 +69,27 @@ asterisk -rvvvvvvvvv
 | 10000-10100 | UDP      | RTP media (audio)                |
 | 5038        | TCP      | AMI (Asterisk Manager Interface) |
 | 8088        | TCP      | HTTP interface                   |
+
+## Testing
+
+### SIP Registration Test
+
+Use `sip-register-test.js` to verify the Asterisk container is accepting SIP connections:
+
+```bash
+node sip-register-test.js --host localhost --port 5060 --user 1001 --pass secret
+```
+
+Options:
+
+- `--host` - Asterisk server hostname/IP (default: localhost)
+- `--port` - SIP port (default: 5060)
+- `--user` - SIP username (default: 1001)
+- `--pass` - SIP password
+- `--domain` - SIP domain (default: same as host)
+
+Works with either node or bun.
+
+### WebSocket Testing (Pending)
+
+The `sip-test.html` file provides a browser-based WebSocket SIP client for testing. This requires WebSocket support to be configured in the Asterisk container, which is not yet implemented.
