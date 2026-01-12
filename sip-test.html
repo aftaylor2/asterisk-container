@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asterisk SIP Connection Test</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 30px;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.5rem;
+            color: #0f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #0f0f23;
+            color: #fff;
+            font-size: 1rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: #0f9;
+        }
+        .row {
+            display: flex;
+            gap: 15px;
+        }
+        .row .form-group {
+            flex: 1;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #connectBtn {
+            background: #0f9;
+            color: #000;
+        }
+        #connectBtn:hover:not(:disabled) {
+            background: #0c7;
+        }
+        #disconnectBtn {
+            background: #e74c3c;
+            color: #fff;
+        }
+        #disconnectBtn:hover:not(:disabled) {
+            background: #c0392b;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            background: #0f0f23;
+            min-height: 120px;
+        }
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+        }
+        .status-indicator.connecting { background: #f39c12; }
+        .status-indicator.connected { background: #0f9; }
+        .status-indicator.error { background: #e74c3c; }
+        .status-indicator.disconnected { background: #666; }
+        .status-text {
+            font-weight: 600;
+        }
+        .log {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #888;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #222;
+        }
+        .log-entry.error { color: #e74c3c; }
+        .log-entry.success { color: #0f9; }
+        .log-entry.info { color: #3498db; }
+        .help {
+            margin-top: 15px;
+            font-size: 0.75rem;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SIP Connection Test</h1>
+
+        <div class="form-group">
+            <label>WebSocket Server URL</label>
+            <input type="text" id="server" placeholder="wss://your-asterisk-server:8089/ws" value="wss://localhost:8089/ws">
+        </div>
+
+        <div class="row">
+            <div class="form-group">
+                <label>SIP Username</label>
+                <input type="text" id="username" placeholder="1001" value="1001">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="secret">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>SIP Domain (optional, defaults to server host)</label>
+            <input type="text" id="domain" placeholder="your-asterisk-server">
+        </div>
+
+        <div class="buttons">
+            <button id="connectBtn">Connect & Register</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+        </div>
+
+        <div class="status">
+            <div class="status-header">
+                <div class="status-indicator disconnected" id="indicator"></div>
+                <span class="status-text" id="statusText">Disconnected</span>
+            </div>
+            <div class="log" id="log"></div>
+        </div>
+
+        <p class="help">
+            Requires Asterisk with WebSocket transport enabled (http.conf + pjsip.conf)
+        </p>
+    </div>
+
+    <script src="https://unpkg.com/sip.js@0.21.2/dist/sip.js"></script>
+    <script>
+        const elements = {
+            server: document.getElementById('server'),
+            username: document.getElementById('username'),
+            password: document.getElementById('password'),
+            domain: document.getElementById('domain'),
+            connectBtn: document.getElementById('connectBtn'),
+            disconnectBtn: document.getElementById('disconnectBtn'),
+            indicator: document.getElementById('indicator'),
+            statusText: document.getElementById('statusText'),
+            log: document.getElementById('log')
+        };
+
+        let userAgent = null;
+        let registerer = null;
+
+        function log(message, type = '') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            elements.log.appendChild(entry);
+            elements.log.scrollTop = elements.log.scrollHeight;
+        }
+
+        function setStatus(status, text) {
+            elements.indicator.className = `status-indicator ${status}`;
+            elements.statusText.textContent = text;
+        }
+
+        function setButtons(connecting) {
+            elements.connectBtn.disabled = connecting;
+            elements.disconnectBtn.disabled = !connecting;
+        }
+
+        async function connect() {
+            const server = elements.server.value.trim();
+            const username = elements.username.value.trim();
+            const password = elements.password.value;
+
+            // Extract domain from server URL if not provided
+            let domain = elements.domain.value.trim();
+            if (!domain) {
+                try {
+                    const url = new URL(server);
+                    domain = url.hostname;
+                } catch (e) {
+                    domain = 'localhost';
+                }
+            }
+
+            if (!server || !username) {
+                log('Server and username are required', 'error');
+                return;
+            }
+
+            elements.log.innerHTML = '';
+            setStatus('connecting', 'Connecting...');
+            setButtons(true);
+            log(`Connecting to ${server}...`, 'info');
+
+            try {
+                const uri = SIP.UserAgent.makeURI(`sip:${username}@${domain}`);
+                if (!uri) {
+                    throw new Error('Failed to create SIP URI');
+                }
+
+                userAgent = new SIP.UserAgent({
+                    uri: uri,
+                    transportOptions: {
+                        server: server
+                    },
+                    authorizationUsername: username,
+                    authorizationPassword: password,
+                    logLevel: 'warn'
+                });
+
+                userAgent.delegate = {
+                    onConnect: () => {
+                        log('WebSocket connected', 'success');
+                        register();
+                    },
+                    onDisconnect: (error) => {
+                        if (error) {
+                            log(`Disconnected with error: ${error.message}`, 'error');
+                            setStatus('error', 'Connection Error');
+                        } else {
+                            log('Disconnected', 'info');
+                            setStatus('disconnected', 'Disconnected');
+                        }
+                        setButtons(false);
+                    }
+                };
+
+                await userAgent.start();
+                log('UserAgent started', 'info');
+
+            } catch (error) {
+                log(`Connection failed: ${error.message}`, 'error');
+                setStatus('error', 'Connection Failed');
+                setButtons(false);
+            }
+        }
+
+        async function register() {
+            try {
+                registerer = new SIP.Registerer(userAgent);
+
+                registerer.stateChange.addListener((state) => {
+                    switch (state) {
+                        case SIP.RegistererState.Registered:
+                            log('Successfully registered!', 'success');
+                            setStatus('connected', 'Registered');
+                            break;
+                        case SIP.RegistererState.Unregistered:
+                            log('Unregistered', 'info');
+                            setStatus('disconnected', 'Unregistered');
+                            break;
+                        case SIP.RegistererState.Terminated:
+                            log('Registration terminated', 'info');
+                            break;
+                    }
+                });
+
+                log('Sending REGISTER request...', 'info');
+                await registerer.register();
+
+            } catch (error) {
+                log(`Registration failed: ${error.message}`, 'error');
+                setStatus('error', 'Registration Failed');
+            }
+        }
+
+        async function disconnect() {
+            setStatus('connecting', 'Disconnecting...');
+            log('Disconnecting...', 'info');
+
+            try {
+                if (registerer) {
+                    await registerer.unregister();
+                    registerer = null;
+                }
+                if (userAgent) {
+                    await userAgent.stop();
+                    userAgent = null;
+                }
+                log('Disconnected successfully', 'success');
+                setStatus('disconnected', 'Disconnected');
+            } catch (error) {
+                log(`Disconnect error: ${error.message}`, 'error');
+            }
+            setButtons(false);
+        }
+
+        elements.connectBtn.addEventListener('click', connect);
+        elements.disconnectBtn.addEventListener('click', disconnect);
+
+        // Allow Enter key to connect
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !elements.connectBtn.disabled) {
+                    connect();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+<!--
+Requirements for Asterisk:
+Your Asterisk server needs WebSocket transport enabled. In your pjsip.conf:
+
+
+[transport-wss]
+type=transport
+protocol=wss
+bind=0.0.0.0:8089
+And in http.conf:
+
+
+[general]
+enabled=yes
+bindaddr=0.0.0.0
+bindport=8088
+tlsenable=yes
+tlsbindaddr=0.0.0.0:8089
+tlscertfile=/path/to/cert.pem
+tlsprivatekey=/path/to/key.pem
+-->
