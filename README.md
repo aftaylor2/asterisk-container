@@ -1,6 +1,6 @@
 # Asterisk Docker
 
-A lightweight Docker image for Asterisk 18 PBX server, built using a multi-stage build for minimal image size.
+A lightweight Docker image for Asterisk PBX server, built using a multi-stage build for minimal image size. Tested for Asterisk v18 and v22.
 
 ## Build
 
