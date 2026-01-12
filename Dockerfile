@@ -99,6 +99,10 @@ COPY --from=builder /usr/lib64/libasterisk* /usr/lib64/
 COPY --from=builder /var/lib/asterisk /var/lib/asterisk
 COPY --from=builder /etc/asterisk /etc/asterisk
 
+# Copy custom configuration
+COPY pjsip.conf /etc/asterisk/pjsip.conf
+COPY extensions.conf /etc/asterisk/extensions.conf
+
 # Create necessary directories and set permissions
 RUN mkdir -p /var/run/asterisk \
   /var/log/asterisk \
